@@ -15,26 +15,22 @@
 
 #include "json.h"
 
-#include <avro.h>
 #include <stdio.h>
 
-int avro_bin_to_json(avro_schema_t schema,
-        const void *val_bin, size_t val_len,
+int avro_to_json(const avro_value_t *val,
         char **val_out, size_t *val_len_out);
 
 
-int json_encode_msg(table_metadata_t table,
-        const void *key_bin, size_t key_len,
-        char **key_out, size_t *key_len_out,
-        const void *row_bin, size_t row_len,
-        char **row_out, size_t *row_len_out) {
+int json_encode_msg(
+        const avro_value_t *key, char **key_out, size_t *key_len_out,
+        const avro_value_t *row, char **row_out, size_t *row_len_out) {
     int err;
-    err = avro_bin_to_json(table->key_schema, key_bin, key_len, key_out, key_len_out);
+    err = avro_to_json(key, key_out, key_len_out);
     if (err) {
       fprintf(stderr, "json: error encoding key: %s\n", avro_strerror());
       return err;
     }
-    err = avro_bin_to_json(table->row_schema, row_bin, row_len, row_out, row_len_out);
+    err = avro_to_json(row, row_out, row_len_out);
     if (err) {
       fprintf(stderr, "json: error encoding row: %s\n", avro_strerror());
       return err;
@@ -44,61 +40,19 @@ int json_encode_msg(table_metadata_t table,
 }
 
 
-int avro_bin_to_json(avro_schema_t schema,
-        const void *val_bin, size_t val_len,
+int avro_to_json(const avro_value_t *val,
         char **val_out, size_t *val_len_out) {
-    if (!val_bin) {
+    if (!val) {
         *val_out = NULL;
         return 0;
-    } else if (!schema) {
-        /* got a value where we didn't expect one, and no schema to decode it */
-        *val_out = NULL;
-        return EINVAL;
     }
 
-    avro_reader_t reader = avro_reader_memory(val_bin, val_len);
-
-    avro_value_iface_t *iface = avro_generic_class_from_schema(schema);
-    if (!iface) {
-        fprintf(stderr, "json: error in avro_generic_class_from_schema: %s\n", avro_strerror());
-        avro_reader_free(reader);
-        return EINVAL;
-    }
-
-    int err;
-
-    avro_value_t value;
-    err = avro_generic_value_new(iface, &value);
+    int err = avro_value_to_json(val, 1, val_out);
     if (err) {
-        fprintf(stderr, "json: error in avro_generic_value_new: %s\n", avro_strerror());
-        avro_value_iface_decref(iface);
-        avro_reader_free(reader);
-        return err;
-    }
-
-    err = avro_value_read(reader, &value);
-    if (err) {
-        fprintf(stderr, "json: error decoding Avro value: %s\n", avro_strerror());
-        avro_value_decref(&value);
-        avro_value_iface_decref(iface);
-        avro_reader_free(reader);
-        return err;
-    }
-
-    err = avro_value_to_json(&value, 1, val_out);
-    if (err) {
-        fprintf(stderr, "json: error converting Avro value to JSON: %s\n", avro_strerror());
-        avro_value_decref(&value);
-        avro_value_iface_decref(iface);
-        avro_reader_free(reader);
         return err;
     }
 
     *val_len_out = strlen(*val_out); // not including null terminator - to librdkafka it's just bytes
-
-    avro_value_decref(&value);
-    avro_value_iface_decref(iface);
-    avro_reader_free(reader);
 
     return 0;
 }

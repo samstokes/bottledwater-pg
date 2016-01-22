@@ -102,8 +102,8 @@ static int on_delete_row(void *_context, uint64_t wal_pos, Oid relid,
         const void *key_bin, size_t key_len, avro_value_t *key_val,
         const void *old_bin, size_t old_len, avro_value_t *old_val);
 int send_kafka_msg(producer_context_t context, uint64_t wal_pos, Oid relid,
-        const void *key_bin, size_t key_len,
-        const void *val_bin, size_t val_len);
+        const void *key_bin, size_t key_len, const avro_value_t *key,
+        const void *val_bin, size_t val_len, const avro_value_t *val);
 static void on_deliver_msg(rd_kafka_t *kafka, const rd_kafka_message_t *msg, void *envelope);
 void maybe_checkpoint(producer_context_t context);
 void backpressure(producer_context_t context);
@@ -346,7 +346,7 @@ static int on_insert_row(void *_context, uint64_t wal_pos, Oid relid,
         const void *key_bin, size_t key_len, avro_value_t *key_val,
         const void *new_bin, size_t new_len, avro_value_t *new_val) {
     producer_context_t context = (producer_context_t) _context;
-    return send_kafka_msg(context, wal_pos, relid, key_bin, key_len, new_bin, new_len);
+    return send_kafka_msg(context, wal_pos, relid, key_bin, key_len, key_val, new_bin, new_len, new_val);
 }
 
 static int on_update_row(void *_context, uint64_t wal_pos, Oid relid,
@@ -354,7 +354,7 @@ static int on_update_row(void *_context, uint64_t wal_pos, Oid relid,
         const void *old_bin, size_t old_len, avro_value_t *old_val,
         const void *new_bin, size_t new_len, avro_value_t *new_val) {
     producer_context_t context = (producer_context_t) _context;
-    return send_kafka_msg(context, wal_pos, relid, key_bin, key_len, new_bin, new_len);
+    return send_kafka_msg(context, wal_pos, relid, key_bin, key_len, key_val, new_bin, new_len, new_val);
 }
 
 static int on_delete_row(void *_context, uint64_t wal_pos, Oid relid,
@@ -362,15 +362,15 @@ static int on_delete_row(void *_context, uint64_t wal_pos, Oid relid,
         const void *old_bin, size_t old_len, avro_value_t *old_val) {
     producer_context_t context = (producer_context_t) _context;
     if (key_bin)
-        return send_kafka_msg(context, wal_pos, relid, key_bin, key_len, NULL, 0);
+        return send_kafka_msg(context, wal_pos, relid, key_bin, key_len, key_val, NULL, 0, NULL);
     else
         return 0; // delete on unkeyed table --> can't do anything
 }
 
 
 int send_kafka_msg(producer_context_t context, uint64_t wal_pos, Oid relid,
-        const void *key_bin, size_t key_len,
-        const void *val_bin, size_t val_len) {
+        const void *key_bin, size_t key_len, const avro_value_t *key,
+        const void *val_bin, size_t val_len, const avro_value_t *val) {
 
     transaction_info *xact = &context->xact_list[context->xact_head];
     xact->recvd_events++;
@@ -383,7 +383,7 @@ int send_kafka_msg(producer_context_t context, uint64_t wal_pos, Oid relid,
     envelope->relid = relid;
     envelope->xact = xact;
 
-    void *key = NULL, *val = NULL;
+    void *key_encoded = NULL, *val_encoded = NULL;
     size_t key_encoded_len, val_encoded_len;
     table_metadata_t table = table_mapper_lookup(context->mapper, relid);
     if (!table) {
@@ -395,8 +395,9 @@ int send_kafka_msg(producer_context_t context, uint64_t wal_pos, Oid relid,
 
     switch (context->output_format) {
     case OUTPUT_FORMAT_JSON:
-        err = json_encode_msg(table,
-                key_bin, key_len, (char **) &key, &key_encoded_len, val_bin, val_len, (char **) &val, &val_encoded_len);
+        err = json_encode_msg(
+                key, (char **) &key_encoded, &key_encoded_len,
+                val, (char **) &val_encoded, &val_encoded_len);
 
         if (err) {
             fprintf(stderr, "%s: error %s encoding JSON for topic %s\n", progname, strerror(err), rd_kafka_topic_name(table->topic));
@@ -405,7 +406,7 @@ int send_kafka_msg(producer_context_t context, uint64_t wal_pos, Oid relid,
         break;
     case OUTPUT_FORMAT_AVRO:
         err = schema_registry_encode_msg(table->key_schema_id, table->row_schema_id,
-                key_bin, key_len, &key, &key_encoded_len, val_bin, val_len, &val, &val_encoded_len);
+                key_bin, key_len, &key_encoded, &key_encoded_len, val_bin, val_len, &val_encoded, &val_encoded_len);
 
         if (err) {
             fprintf(stderr, "%s: error %s encoding Avro for topic %s\n", progname, strerror(err), rd_kafka_topic_name(table->topic));
@@ -420,8 +421,8 @@ int send_kafka_msg(producer_context_t context, uint64_t wal_pos, Oid relid,
     bool enqueued = false;
     while (!enqueued) {
         int err = rd_kafka_produce(table->topic, RD_KAFKA_PARTITION_UA, RD_KAFKA_MSG_F_FREE,
-                val, val == NULL ? 0 : val_encoded_len,
-                key, key == NULL ? 0 : key_encoded_len,
+                val_encoded, val_encoded == NULL ? 0 : val_encoded_len,
+                key_encoded, key_encoded == NULL ? 0 : key_encoded_len,
                 envelope);
         enqueued = (err == 0);
 
