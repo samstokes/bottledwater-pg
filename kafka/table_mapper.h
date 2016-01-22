@@ -43,8 +43,8 @@ table_mapper_t table_mapper_new(
 table_metadata_t table_mapper_lookup(table_mapper_t mapper, Oid relid);
 table_metadata_t table_mapper_update(table_mapper_t mapper, Oid relid,
         const char* topic_name,
-        const char* key_schema_json, size_t key_schema_len,
-        const char* row_schema_json, size_t row_schema_len);
+        const char* key_schema_json, size_t key_schema_len, avro_schema_t key_schema,
+        const char* row_schema_json, size_t row_schema_len, avro_schema_t row_schema);
 void table_mapper_free(table_mapper_t mapper);
 
 

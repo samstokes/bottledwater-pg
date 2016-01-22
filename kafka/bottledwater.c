@@ -329,8 +329,9 @@ static int on_table_schema(void *_context, uint64_t wal_pos, Oid relid,
     producer_context_t context = (producer_context_t) _context;
     const char *topic_name = avro_schema_name(row_schema);
 
-    table_metadata_t table = table_mapper_update(context->mapper, relid,
-            topic_name, key_schema_json, key_schema_len, row_schema_json, row_schema_len);
+    table_metadata_t table = table_mapper_update(context->mapper, relid, topic_name,
+            key_schema_json, key_schema_len, key_schema,
+            row_schema_json, row_schema_len, row_schema);
 
     if (!table) {
         fprintf(stderr, "%s: %s\n", progname, context->mapper->error);

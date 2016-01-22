@@ -13,7 +13,7 @@
 
 table_metadata_t table_metadata_new(table_mapper_t mapper, Oid relid);
 int table_metadata_update_topic(table_mapper_t mapper, table_metadata_t table, const char* topic_name);
-int table_metadata_update_schema(table_mapper_t mapper, table_metadata_t table, int is_key, const char* schema_json, size_t schema_len);
+int table_metadata_update_schema(table_mapper_t mapper, table_metadata_t table, int is_key, const char* schema_json, size_t schema_len, avro_schema_t schema);
 void table_metadata_set_schema_id(table_metadata_t table, int is_key, int schema_id);
 void table_metadata_set_schema(table_metadata_t table, int is_key, avro_schema_t new_schema);
 void table_metadata_free(table_metadata_t table);
@@ -65,12 +65,15 @@ table_metadata_t table_mapper_lookup(table_mapper_t mapper, Oid relid) {
  *  * will open the named topic, closing the old one if necessary.
  *  * if running with a schema registry, will register the schemas.
  *
+ * Doesn't take ownership of key_schema or row_schema; will take copies
+ * (incref) if needed.
+ *
  * Returns the updated metadata record on success, or NULL on failure.  Consult
  * mapper->error for the error message on failure. */
 table_metadata_t table_mapper_update(table_mapper_t mapper, Oid relid,
         const char* topic_name,
-        const char* key_schema_json, size_t key_schema_len,
-        const char* row_schema_json, size_t row_schema_len) {
+        const char* key_schema_json, size_t key_schema_len, avro_schema_t key_schema,
+        const char* row_schema_json, size_t row_schema_len, avro_schema_t row_schema) {
     table_metadata_t table = table_mapper_lookup(mapper, relid);
     if (table) {
         logf("Updating metadata for table %" PRIu32 " (topic \"%s\")\n", relid, topic_name);
@@ -84,10 +87,10 @@ table_metadata_t table_mapper_update(table_mapper_t mapper, Oid relid,
     err = table_metadata_update_topic(mapper, table, topic_name);
     if (err) return NULL;
 
-    err = table_metadata_update_schema(mapper, table, 1, key_schema_json, key_schema_len);
+    err = table_metadata_update_schema(mapper, table, 1, key_schema_json, key_schema_len, key_schema);
     if (err) return NULL;
 
-    err = table_metadata_update_schema(mapper, table, 0, row_schema_json, row_schema_len);
+    err = table_metadata_update_schema(mapper, table, 0, row_schema_json, row_schema_len, row_schema);
     if (err) return NULL;
 
     return table;
@@ -151,7 +154,7 @@ int table_metadata_update_topic(table_mapper_t mapper, table_metadata_t table, c
 }
 
 /* Returns 0 on success.  On failure, sets mapper->error and returns nonzero. */
-int table_metadata_update_schema(table_mapper_t mapper, table_metadata_t table, int is_key, const char* schema_json, size_t schema_len) {
+int table_metadata_update_schema(table_mapper_t mapper, table_metadata_t table, int is_key, const char* schema_json, size_t schema_len, avro_schema_t schema) {
     int prev_schema_id = is_key ? table->key_schema_id : table->row_schema_id;
     int schema_id = TABLE_MAPPER_SCHEMA_ID_MISSING;
 
@@ -170,32 +173,17 @@ int table_metadata_update_schema(table_mapper_t mapper, table_metadata_t table, 
         table_metadata_set_schema_id(table, is_key, schema_id);
     }
 
-    avro_schema_t schema;
-
     /* If running with a schema registry, we can use the registry to detect
      * if the schema we just saw is the same as the one we remembered
      * previously (since the registry guarantees to return the same id for
      * identical schemas).  If the registry returns the same id as before, we
-     * can skip parsing the new schema and just keep the previous one.
+     * can skip storing the new schema and just keep the previous one.  The
+     * main upshot is we get more informative logging.
      *
      * However, if we're running without a registry, it's not so easy to detect
-     * whether or not the schema changed, so in that case we just always parse
-     * the new schema.  (We could store the previous schema JSON and strcmp()
-     * it with the new JSON, but that probably wouldn't save much over just
-     * parsing the JSON, given this isn't a hot code path.) */
+     * whether or not the schema changed, so in that case we just always store
+     * the new schema. */
     if (prev_schema_id == TABLE_MAPPER_SCHEMA_ID_MISSING || prev_schema_id != schema_id) {
-        if (schema_json) {
-            err = avro_schema_from_json_length(schema_json, schema_len, &schema);
-
-            if (err) {
-                mapper_error(mapper, "Could not parse %s schema: %s",
-                        is_key ? "key" : "row", avro_strerror());
-                return err;
-            }
-        } else {
-            schema = NULL;
-        }
-
         table_metadata_set_schema(table, is_key, schema);
 
         if (schema) avro_schema_decref(schema);
