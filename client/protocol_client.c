@@ -331,12 +331,10 @@ void schema_list_entry_decrefs(schema_list_entry *entry) {
     avro_reader_free(entry->avro_reader);
     avro_value_decref(&entry->old_value);
     avro_value_decref(&entry->row_value);
-    avro_value_iface_decref(entry->row_iface);
     avro_schema_decref(entry->row_schema);
 
     if (entry->key_schema) {
         avro_value_decref(&entry->key_value);
-        avro_value_iface_decref(entry->key_iface);
         avro_schema_decref(entry->key_schema);
     }
 }
@@ -345,7 +343,6 @@ void schema_list_entry_decrefs(schema_list_entry *entry) {
 void frame_reader_free(frame_reader_t reader) {
     avro_reader_free(reader->avro_reader);
     avro_value_decref(&reader->frame_value);
-    avro_value_iface_decref(reader->frame_iface);
     avro_schema_decref(reader->frame_schema);
 
     for (int i = 0; i < reader->num_schemas; i++) {
