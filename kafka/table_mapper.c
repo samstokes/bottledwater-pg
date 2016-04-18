@@ -58,7 +58,7 @@ table_mapper_t table_mapper_new(
 table_metadata_t table_mapper_lookup(table_mapper_t mapper, Oid relid) {
     for (int i = 0; i < mapper->num_tables; i++) {
         table_metadata_t table = mapper->tables[i];
-        if (table->relid == relid) return table;
+        if (!table->deleted && table->relid == relid) return table;
     }
     return NULL;
 }
@@ -96,6 +96,8 @@ table_metadata_t table_mapper_update(table_mapper_t mapper, Oid relid,
      * schema id.  A sufficiently motivated consumer would be able to detect
      * this and conclude that there was a problem with the schema registry.
      *
+     * TODO maybe this is the wrong behaviour for now.
+     *
      * It's a tricky question what the *right* behaviour should be:
      *
      *  * the current behaviour keeps data flowing, but results in the Kafka
@@ -117,6 +119,8 @@ table_metadata_t table_mapper_update(table_mapper_t mapper, Oid relid,
      *        so we threaten the stability of Postgres if the error persists.
      *
      * This might need to end up being a configuration choice.
+     *
+     * TODO what about null topic?
      */
     int err;
 
@@ -124,7 +128,7 @@ table_metadata_t table_mapper_update(table_mapper_t mapper, Oid relid,
     if (err) return NULL;
 
     err = table_metadata_update_schema(mapper, table, 1, key_schema_json, key_schema_len);
-    if (err) return NULL;
+    if (err) { log_warn("eh oh"); table->deleted = 1; return NULL; } /* hmmmm TODO */
 
     err = table_metadata_update_schema(mapper, table, 0, row_schema_json, row_schema_len);
     if (err) return NULL;

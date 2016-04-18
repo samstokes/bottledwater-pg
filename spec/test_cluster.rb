@@ -38,6 +38,7 @@ class TestCluster
     self.kafka_auto_create_topics_enable = true
 
     self.bottledwater_format = :json
+    self.bottledwater_on_error = :exit
   end
 
   def start(without: [])
@@ -113,6 +114,10 @@ class TestCluster
 
   def bottledwater_service
     :"bottledwater-#{bottledwater_format}"
+  end
+
+  def bottledwater_on_error=(policy)
+    ENV['BOTTLED_WATER_ON_ERROR'] = policy.to_s
   end
 
   def schema_registry_needed?
@@ -293,13 +298,19 @@ class TestCluster
     end
   end
 
-  def failed_services
+  def services(named = nil)
     ps_output = @compose.run!(:ps).
       split("\n").
       drop(2) # header rows
+
     container_names = ps_output.map {|line| line.strip.split.first }
-    containers = container_names.map {|name| @docker.inspect(name) }
-    containers.select {|container| container.exit_code != 0 }
+    container_names = container_names.grep(named) if named
+    #puts "Got the containers: #{container_names.inspect}" # TODO
+    container_names.map {|name| @docker.inspect(name) }
+  end
+
+  def failed_services
+    services.select {|container| container.exit_code != 0 }
   end
 
   def dump_container_logs(container)
