@@ -411,3 +411,21 @@ int read_entirely(frame_reader_t reader, avro_value_t *value, avro_reader_t avro
 
     return err;
 }
+
+
+/* Return: 0 if we should acknowledge wal_pos as flushed;
+ *         FRAME_READER_SYNC_PENDING if we should not because we have
+ *         transactions pending sync;
+ *         anything else to signify an error. */
+int handle_keepalive(frame_reader_t reader, uint64_t wal_pos) {
+    if (reader->on_keepalive) {
+        int err = reader->on_keepalive(reader->cb_context, wal_pos);
+        switch (err) {
+        case 0:
+        case FRAME_READER_SYNC_PENDING:
+            return err;
+        default:
+            return frame_reader_handle(reader, err, "error in keepalive callback");
+        }
+    } else return 0;
+}

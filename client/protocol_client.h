@@ -40,6 +40,15 @@ typedef int (*delete_row_cb)(void *, uint64_t, Oid,
         const void *, size_t, avro_value_t *,
         const void *, size_t, avro_value_t *);
 
+#define FRAME_READER_SYNC_PENDING EBUSY
+
+/* Parameters: context, wal_pos
+ * Return: 0 if we should acknowledge wal_pos as flushed;
+ *         FRAME_READER_SYNC_PENDING if we should not because we have
+ *         transactions pending sync;
+ *         anything else to signify an error. */
+typedef int (*keepalive_cb)(void *, uint64_t);
+
 /* Parameters: context, err, message
  * Return: 0 if the error was handled and client should continue;
  *         nonzero if the error could not be handled and the client should
@@ -70,6 +79,7 @@ typedef struct {
     insert_row_cb on_insert_row;     /* Called when a row is inserted into a relation */
     update_row_cb on_update_row;     /* Called when a row in a relation is updated */
     delete_row_cb on_delete_row;     /* Called when a row in a relation is deleted */
+    keepalive_cb on_keepalive;       /* Called when server sends a keepalive message */
     error_handler_cb on_error;       /* Called when a frame cannot be read or when a callback returns a nonzero error code */
     int num_schemas;                 /* Number of schemas in use */
     int capacity;                    /* Allocated size of schemas array */
@@ -86,5 +96,7 @@ typedef frame_reader *frame_reader_t;
 int parse_frame(frame_reader_t reader, uint64_t wal_pos, char *buf, int buflen);
 frame_reader_t frame_reader_new(void);
 void frame_reader_free(frame_reader_t reader);
+
+int handle_keepalive(frame_reader_t reader, uint64_t wal_pos);
 
 #endif /* PROTOCOL_CLIENT_H */

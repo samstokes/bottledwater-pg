@@ -147,6 +147,7 @@ static int on_update_row(void *_context, uint64_t wal_pos, Oid relid,
 static int on_delete_row(void *_context, uint64_t wal_pos, Oid relid,
         const void *key_bin, size_t key_len, avro_value_t *key_val,
         const void *old_bin, size_t old_len, avro_value_t *old_val);
+static int on_keepalive(void *_context, uint64_t wal_pos);
 static int on_client_error(void *_context, int err, const char *message);
 int send_kafka_msg(producer_context_t context, uint64_t wal_pos, Oid relid,
         const void *key_bin, size_t key_len,
@@ -484,6 +485,16 @@ static int on_delete_row(void *_context, uint64_t wal_pos, Oid relid,
         return 0; // delete on unkeyed table --> can't do anything
 }
 
+static int on_keepalive(void *_context, uint64_t wal_pos) {
+    producer_context_t context = (producer_context_t) _context;
+
+    if (xact_list_empty(context)) {
+        return 0;
+    } else {
+        return FRAME_READER_SYNC_PENDING;
+    }
+}
+
 static int on_client_error(void *_context, int err, const char *message) {
     producer_context_t context = (producer_context_t) _context;
     return handle_error(context, err, "Client error: %s", message);
@@ -696,6 +707,7 @@ client_context_t init_client() {
     frame_reader->on_insert_row   = on_insert_row;
     frame_reader->on_update_row   = on_update_row;
     frame_reader->on_delete_row   = on_delete_row;
+    frame_reader->on_keepalive    = on_keepalive;
     frame_reader->on_error        = on_client_error;
 
     client_context_t client = db_client_new();
