@@ -72,3 +72,24 @@ kafka-tools:
     - zookeeper
     - kafka
   entrypoint: /confluent-tools.sh
+ruby:
+  image: bwruby
+  links:
+    - postgres
+java:
+  image: bwjava
+  links:
+    - postgres
+connect:
+  build: ./tmp
+  dockerfile: Dockerfile.connect
+  hostname: connect
+  links:
+    - kafka
+    - postgres
+  environment:
+    CLASSPATH: /usr/src/app/lib/connect-bottledwater-fat.jar
+  entrypoint: ['/usr/bin/connect-standalone']
+  command: ['/usr/src/app/properties/connect-standalone.properties', '/usr/src/app/properties/connect-bottledwater-source.properties']
+  volumes:
+    - .:/usr/src/app

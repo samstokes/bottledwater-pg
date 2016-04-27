@@ -1,0 +1,10 @@
+FROM confluent/kafka
+
+VOLUME /usr/src/app
+
+ADD bottledwater-lib.tar.gz /
+
+ENV CLASSPATH /usr/src/app/lib/connect-bottledwater-fat.jar
+ENV LD_LIBRARY_PATH /usr/local/lib
+ENTRYPOINT ["/usr/bin/connect-standalone"]
+CMD ["/usr/src/app/properties/connect-standalone.properties", "/usr/src/app/properties/connect-bottledwater-source.properties"]

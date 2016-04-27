@@ -9,13 +9,14 @@ all:
 
 install:
 	$(MAKE) -C ext install
+	$(MAKE) -C client install
 
 clean:
 	$(MAKE) -C ext clean
 	$(MAKE) -C client clean
 	$(MAKE) -C kafka clean
 
-docker: docker-client docker-postgres
+docker: docker-client docker-postgres docker-connect
 
 docker-compose: docker
 	docker-compose build
@@ -37,3 +38,6 @@ docker-client: tmp/Dockerfile.client tmp/avro.tar.gz tmp/librdkafka.tar.gz tmp/b
 
 docker-postgres: tmp/Dockerfile.postgres tmp/bottledwater-ext.tar.gz tmp/avro.tar.gz tmp/replication-config.sh
 	docker build -f $< -t local-postgres-bw:$(DOCKER_TAG) tmp
+
+docker-connect: tmp/Dockerfile.connect tmp/bottledwater-lib.tar.gz
+	docker build -f $< -t local-bottledwater-connect:$(DOCKER_TAG) tmp

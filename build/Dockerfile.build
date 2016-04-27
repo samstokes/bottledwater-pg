@@ -56,4 +56,5 @@ RUN cd /root/bottledwater && \
     make clean && make && make install && cd / && \
     tar czf bottledwater-ext.tar.gz usr/lib/postgresql/${PG_MAJOR}/lib/bottledwater.so usr/share/postgresql/${PG_MAJOR}/extension/bottledwater* && \
     cp /root/bottledwater/kafka/bottledwater /root/bottledwater/client/bwtest /usr/local/bin && \
-    tar czf bottledwater-bin.tar.gz usr/local/bin/bottledwater usr/local/bin/bwtest
+    tar czf bottledwater-bin.tar.gz usr/local/bin/bottledwater usr/local/bin/bwtest && \
+    tar czhf bottledwater-lib.tar.gz usr/local/lib/libbottledwater.so* /usr/local/lib/libavro.so* /usr/lib/x86_64-linux-gnu/libjansson.so* /usr/lib/x86_64-linux-gnu/libpq.so*
