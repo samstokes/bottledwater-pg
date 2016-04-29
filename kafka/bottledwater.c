@@ -400,7 +400,10 @@ static int on_begin_txn(void *_context, uint64_t wal_pos, uint32_t xid) {
 
     // If the circular buffer is full, we have to block and wait for some transactions
     // to be delivered to Kafka and acknowledged for the broker.
-    while (xact_list_full(context)) backpressure(context);
+    while (xact_list_full(context)) {
+        log_debug("Too many transactions in flight, applying backpressure");
+        backpressure(context);
+    }
 
     context->xact_head = (context->xact_head + 1) % XACT_LIST_LEN;
     transaction_info *xact = &context->xact_list[context->xact_head];
@@ -554,6 +557,7 @@ int send_kafka_msg(producer_context_t context, uint64_t wal_pos, Oid relid,
         // If data from Postgres is coming in faster than we can send it on to Kafka, we
         // create backpressure by blocking until the producer's queue has drained a bit.
         if (rd_kafka_errno2err(errno) == RD_KAFKA_RESP_ERR__QUEUE_FULL) {
+            log_debug("Kafka producer queue is full, applying backpressure");
             backpressure(context);
 
         } else if (err != 0) {
