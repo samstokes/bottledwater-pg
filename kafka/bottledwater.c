@@ -3,6 +3,7 @@
 #include "logger.h"
 #include "registry.h"
 
+#include <assert.h>
 #include <librdkafka/rdkafka.h>
 #include <getopt.h>
 #include <stdio.h>
@@ -42,7 +43,7 @@
 
 
 #define PRODUCER_CONTEXT_ERROR_LEN 512
-#define MAX_IN_FLIGHT_TRANSACTIONS 1000
+#define MAX_IN_FLIGHT_TRANSACTIONS 5
 /* leave room for one extra empty element so the circular buffer can
  * distinguish between empty and full */
 #define XACT_LIST_LEN (MAX_IN_FLIGHT_TRANSACTIONS + 1)
@@ -98,12 +99,46 @@ static inline int xact_list_length(producer_context_t context) {
         % XACT_LIST_LEN;
 }
 
-static inline bool xact_list_full(producer_context_t context) {
-    return xact_list_length(context) == XACT_LIST_LEN - 1;
+#define xact_list_full1(context) \
+    (((context)->xact_head + 2) % XACT_LIST_LEN == (context)->xact_tail)
+#define xact_list_full2(context) \
+    (xact_list_length(context) == XACT_LIST_LEN - 1)
+static inline int xact_list_full(producer_context_t context) {
+    bool answer = xact_list_full2(context);
+    assert(answer == xact_list_full1(context));
+    return answer;
 }
 
-static inline bool xact_list_empty(producer_context_t context) {
-    return xact_list_length(context) == 0;
+#define xact_list_empty1(context) \
+    (((context)->xact_head + 1) % XACT_LIST_LEN == (context)->xact_tail)
+#define xact_list_empty2(context) \
+    (xact_list_length(context) == 0)
+static inline int xact_list_empty(producer_context_t context) {
+    bool answer = xact_list_empty2(context);
+    assert(answer == xact_list_empty1(context));
+    return answer;
+}
+
+static inline void visualize_xact_list(producer_context_t context) {
+    fprintf(stderr, "xact_list (xid): [ ");
+    for (int offset = context->xact_tail; offset != (context->xact_head + 1) % XACT_LIST_LEN; offset = (offset + 1) % XACT_LIST_LEN) {
+        assert(!xact_list_empty(context));
+        uint32_t xid = context->xact_list[offset].xid;
+        fprintf(stderr, " %9d ", xid);
+    }
+    fprintf(stderr, " ]\n");
+    /*fprintf(stderr, "xact_list (bgn): [ ");*/
+    /*for (int offset = context->xact_tail; offset != (context->xact_head + 1) % XACT_LIST_LEN; offset = (offset + 1) % XACT_LIST_LEN) {*/
+        /*uint64_t begin_lsn = context->xact_list[offset].begin_lsn;*/
+        /*fprintf(stderr, " %X/%7X ", (uint32_t) (begin_lsn >> 32), (uint32_t) begin_lsn);*/
+    /*}*/
+    /*fprintf(stderr, " ]\n");*/
+    fprintf(stderr, "xact_list (cmt): [ ");
+    for (int offset = context->xact_tail; offset != (context->xact_head + 1) % XACT_LIST_LEN; offset = (offset + 1) % XACT_LIST_LEN) {
+        uint64_t commit_lsn = context->xact_list[offset].commit_lsn;
+        fprintf(stderr, " %X/%7X ", (uint32_t) (commit_lsn >> 32), (uint32_t) commit_lsn);
+    }
+    fprintf(stderr, " ]\n");
 }
 
 
@@ -406,11 +441,14 @@ static int on_begin_txn(void *_context, uint64_t wal_pos, uint32_t xid) {
     }
 
     context->xact_head = (context->xact_head + 1) % XACT_LIST_LEN;
+    log_debug("set xact_head to %d on begin xid %u", context->xact_head, xid);
     transaction_info *xact = &context->xact_list[context->xact_head];
     xact->xid = xid;
     xact->recvd_events = 0;
     xact->pending_events = 0;
     xact->commit_lsn = 0;
+
+    visualize_xact_list(context);
 
     return 0;
 }
@@ -431,6 +469,9 @@ static int on_commit_txn(void *_context, uint64_t wal_pos, uint32_t xid) {
     }
 
     xact->commit_lsn = wal_pos;
+
+    visualize_xact_list(context);
+
     maybe_checkpoint(context);
     return 0;
 }
@@ -621,6 +662,22 @@ static void on_deliver_msg(rd_kafka_t *kafka, const rd_kafka_message_t *msg, voi
 }
 
 
+#define LOLBUFFER_CAPACITY 100
+static size_t lolbuffer_size = 0;
+static uint32_t lolbuffer[LOLBUFFER_CAPACITY];
+
+static inline void lolbuffer_record(uint32_t xid) {
+    assert(lolbuffer_size < LOLBUFFER_CAPACITY - 1);
+    lolbuffer[lolbuffer_size++] = xid;
+}
+static inline bool lolbuffer_contains(uint32_t xid) {
+    for (size_t i = 0; i < lolbuffer_size; ++i) {
+        if (lolbuffer[i] == xid) return true;
+    }
+    return false;
+}
+
+
 /* When a Postgres transaction has been durably written to Kafka (i.e. we've seen the
  * commit event from Postgres, so we know the transaction is complete, and the Kafka
  * broker has acknowledged all messages in the transaction), we checkpoint it. This
@@ -649,14 +706,25 @@ void maybe_checkpoint(producer_context_t context) {
                       (uint32) (xact->commit_lsn >> 32), (uint32) xact->commit_lsn);
         }
 
+        assert(!lolbuffer_contains(xact->xid));
+
+        log_debug("Setting fsync_lsn %X/%X on commit xid %u",
+                  (uint32) (xact->commit_lsn >> 32), (uint32) xact->commit_lsn,
+                  xact->xid);
         stream->fsync_lsn = xact->commit_lsn;
+
+        lolbuffer_record(xact->xid);
 
         // xid==0 is the initial snapshot transaction. Clear the flag when it's complete.
         if (xact->xid == 0 && xact->commit_lsn > 0) {
             context->client->taking_snapshot = false;
         }
 
+        log_debug("transaction list (head %d, tail %d)", context->xact_head, context->xact_tail);
+
         context->xact_tail = (context->xact_tail + 1) % XACT_LIST_LEN;
+        log_debug("set xact_tail to %d on commit xid %u", context->xact_tail, xact->xid);
+        visualize_xact_list(context);
 
         if (xact_list_empty(context)) break;
 
@@ -724,6 +792,7 @@ producer_context_t init_producer(client_context_t client) {
     context->kafka_conf = rd_kafka_conf_new();
     context->topic_conf = rd_kafka_topic_conf_new();
     // xact_head, xact_tail and xact_list are set to zero by memset() above
+    visualize_xact_list(context);
 
 #if RD_KAFKA_VERSION >= 0x00090000
     // librdkafka 0.9.0 includes an implementation of a "consistent hashing

@@ -10,7 +10,7 @@ AVRO_LDFLAGS = $(shell pkg-config --libs avro-c)
 
 WARNINGS = -Wall -Wmissing-prototypes -Wpointer-arith -Wendif-labels -Wmissing-format-attribute -Wformat-security
 # _POSIX_C_SOURCE=200809L enables strdup
-CFLAGS = -c -std=c99 -D_POSIX_C_SOURCE=200809L $(PG_CFLAGS) $(AVRO_CFLAGS) $(WARNINGS)
+CFLAGS = -c -std=c99 -D_POSIX_C_SOURCE=200809L $(PG_CFLAGS) $(AVRO_CFLAGS) $(WARNINGS) -DDEBUG
 LDFLAGS = $(PG_LDFLAGS) $(AVRO_LDFLAGS)
 CC=gcc
 AR=ar
