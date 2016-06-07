@@ -39,5 +39,5 @@ docker-client: tmp/Dockerfile.client tmp/avro.tar.gz tmp/librdkafka.tar.gz tmp/b
 docker-postgres: tmp/Dockerfile.postgres tmp/bottledwater-ext.tar.gz tmp/avro.tar.gz tmp/replication-config.sh
 	docker build -f $< -t local-postgres-bw:$(DOCKER_TAG) tmp
 
-docker-connect: tmp/Dockerfile.connect tmp/bottledwater-lib.tar.gz
+docker-connect: tmp/Dockerfile.connect tmp/bottledwater-lib.tar.gz tmp/connect-bottledwater-fat.jar tmp/connect-bottledwater-source.properties
 	docker build -f $< -t local-bottledwater-connect:$(DOCKER_TAG) tmp

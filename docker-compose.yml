@@ -87,9 +87,3 @@ connect:
   links:
     - kafka
     - postgres
-  environment:
-    CLASSPATH: /usr/src/app/lib/connect-bottledwater-fat.jar
-  entrypoint: ['/usr/bin/connect-standalone']
-  command: ['/usr/src/app/properties/connect-standalone.properties', '/usr/src/app/properties/connect-bottledwater-source.properties']
-  volumes:
-    - .:/usr/src/app

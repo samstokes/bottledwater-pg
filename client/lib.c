@@ -39,6 +39,8 @@ void client_on_table_schema(client_context_t client, table_schema_cb callback) {
 }
 
 int start(client_context_t client) {
+    fprintf(stderr, "Heello, woorld!\n"); // TODO
+
     int err = db_client_start(client);
     if (err) return err;
 
@@ -64,6 +66,8 @@ int client_poll(client_context_t client) {
 int client_wait(client_context_t client) {
     return db_client_wait(client);
 }
+
+// TODO need to tell client that snapshot completed
 
 void client_fsync(client_context_t client, uint64_t fsync_lsn) {
     client->repl.fsync_lsn = fsync_lsn;
