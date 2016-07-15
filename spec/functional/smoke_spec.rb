@@ -40,3 +40,11 @@ end
 describe 'smoke test (Avro, Postgres 9.5)', functional: true, format: :avro, postgres: '9.5' do
   it_should_behave_like 'smoke test', :avro, '9.5'
 end
+
+describe 'smoke test (JSON, Postgres 9.6)', functional: true, format: :json, postgres: '9.6' do
+  it_should_behave_like 'smoke test', :json, '9.6'
+end
+
+describe 'smoke test (Avro, Postgres 9.6)', functional: true, format: :avro, postgres: '9.6' do
+  it_should_behave_like 'smoke test', :avro, '9.6'
+end

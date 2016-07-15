@@ -37,7 +37,7 @@ class TestCluster
     self.kafka_log_cleanup_policy = :compact
     self.kafka_auto_create_topics_enable = true
 
-    self.postgres_version = '9.5'
+    self.postgres_version = '9.6'
 
     self.bottledwater_format = :json
     self.bottledwater_on_error = :exit
@@ -58,6 +58,9 @@ class TestCluster
       PG::Connection.ping(host: @host, port: port, user: 'postgres') == PG::PQPING_OK
     end
     @postgres = PG::Connection.open(host: @host, port: pg_port, user: 'postgres')
+
+    puts @postgres.exec('SELECT version()').to_a # TODO
+
     POSTGRES_EXTENSIONS.each do |extension|
       @postgres.exec("CREATE EXTENSION IF NOT EXISTS #{extension}")
     end
@@ -116,7 +119,8 @@ class TestCluster
 
   def postgres_service
     case postgres_version
-    when '9.5'; :postgres
+    when '9.6'; :postgres
+    when '9.5'; :'postgres-95'
     when '9.4'; :'postgres-94'
     else
       raise "Unknown postgres_version #{postgres_version}"

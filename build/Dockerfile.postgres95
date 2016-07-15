@@ -18,12 +18,12 @@
 #
 #   create extension bottledwater;
 
-FROM postgres:9.6
+FROM postgres:9.5
 
 RUN apt-get update && \
     apt-get install -y libjansson4
 
-ADD bottledwater-ext.tar.gz /
+ADD bottledwater-ext-95.tar.gz /
 ADD avro.tar.gz /
 RUN cp /usr/local/lib/libavro.so.* /usr/lib/x86_64-linux-gnu/
 COPY replication-config.sh /docker-entrypoint-initdb.d/replication-config.sh

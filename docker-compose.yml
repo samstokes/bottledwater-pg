@@ -38,6 +38,12 @@ postgres-94:
   hostname: postgres
   ports:
     - '45432:5432'
+postgres-95:
+  build: ./tmp
+  dockerfile: Dockerfile.postgres95
+  hostname: postgres
+  ports:
+    - '45432:5432'
 postgres:
   build: ./tmp
   dockerfile: Dockerfile.postgres
@@ -58,6 +64,7 @@ bottledwater-json:
   extends: {service: bottledwater}
   links:
     - postgres
+    - postgres-95
     - postgres-94
     - kafka
   environment:
@@ -66,6 +73,7 @@ bottledwater-avro:
   extends: {service: bottledwater}
   links:
     - postgres
+    - postgres-95
     - postgres-94
     - kafka
     - schema-registry
