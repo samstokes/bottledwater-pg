@@ -7,10 +7,11 @@ ENV LD_LIBRARY_PATH /usr/local/lib
 
 USER root
 RUN mkdir -p /usr/lib/app /usr/src/app
-RUN chown confluent:confluent /usr/lib/app /usr/src/app
+RUN chown confluent:confluent /usr/lib/app /usr/src/app /etc/kafka
 USER confluent
 
 COPY connect-bottledwater-source.properties /usr/src/app/properties/
+RUN sed -i '/^bootstrap.servers=/s/localhost/kafka/' /etc/kafka/connect-standalone.properties
 
 COPY connect-bottledwater-fat.jar /usr/lib/app/
 ENV CLASSPATH /usr/lib/app/connect-bottledwater-fat.jar
